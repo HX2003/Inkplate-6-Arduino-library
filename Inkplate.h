@@ -12,53 +12,51 @@
 
 #include <Adafruit_GFX.h>
 #include <Wire.h>
-#include "Adafruit_MCP23017.h"
+
 #define E_INK_WIDTH 800
 #define E_INK_HEIGHT 600
-extern Adafruit_MCP23017 mcp;
 
-#define DATA    0x0E8C0030   //D0-D7 = GPIO4 GPIO5 GPIO18 GPIO19 GPIO23 GPIO25 GPIO26 GPIO27
+#define DATA    0x2C8035  //D0-D7 = GPIO15 GPIO5 GPIO2 GPIO18 GPIO0 GPIO19 GPIO4 GPIO21
 
-#define CL        0x01    //GPIO0
+#define CKV       0x1000   //GPIO12
+#define CKV_SET   {GPIO.out_w1ts = CKV;}
+#define CKV_CLEAR {GPIO.out_w1tc = CKV;}
+
+#define CL        0x2000000    //GPIO25
 #define CL_SET    {GPIO.out_w1ts = CL;}
 #define CL_CLEAR  {GPIO.out_w1tc = CL;}
 
-#define LE        0x04     //GPIO2
+#define LE        0x4000000    //GPIO26
 #define LE_SET    {GPIO.out_w1ts = LE;}
 #define LE_CLEAR  {GPIO.out_w1tc = LE;}
 
-#define CKV       0x01   //GPIO32
-#define CKV_SET   {GPIO.out1_w1ts.val = CKV;}
-#define CKV_CLEAR {GPIO.out1_w1tc.val = CKV;}
+#define SPH         0x8000000   //GPIO27
+#define SPH_SET     {GPIO.out_w1ts = SPH;}
+#define SPH_CLEAR   {GPIO.out_w1tc = SPH;}
 
-#define SPH         0x02   //GPIO33
-#define SPH_SET     {GPIO.out1_w1ts.val = SPH;}
-#define SPH_CLEAR   {GPIO.out1_w1tc.val = SPH;}
+#define GMOD        0x2000   //GPIO13
+#define GMOD_SET    {GPIO.out_w1ts = GMOD;}
+#define GMOD_CLEAR  {GPIO.out_w1tc = GMOD;}
 
-//I/O Expander - A Channel
-#define GMOD       1    //GPIOA1
-#define GMOD_SET    {mcp.digitalWrite(GMOD, HIGH);}
-#define GMOD_CLEAR  {mcp.digitalWrite(GMOD, HIGH);}
+#define SPV         0x4000   //GPIO14
+#define SPV_SET     {GPIO.out_w1ts = SPV;}
+#define SPV_CLEAR   {GPIO.out_w1tc = SPV;}
 
-#define OE          0    //GPIOA0
-#define OE_SET      {mcp.digitalWrite(OE, HIGH);}
-#define OE_CLEAR    {mcp.digitalWrite(OE, LOW);}
-
-#define SPV         2   //GPIOA5
-#define SPV_SET     {mcp.digitalWrite(SPV, HIGH);}
-#define SPV_CLEAR   {mcp.digitalWrite(SPV, LOW);}
+#define OE        	0x02   //GPIO33
+#define OE_SET    	{GPIO.out1_w1ts.val = OE;}
+#define OE_CLEAR  	{GPIO.out1_w1tc.val = OE;}
 
 #define WAKEUP         3   //GPIOA3
-#define WAKEUP_SET     {mcp.digitalWrite(WAKEUP, HIGH);}
-#define WAKEUP_CLEAR   {mcp.digitalWrite(WAKEUP, LOW);}
+#define WAKEUP_SET     {}
+#define WAKEUP_CLEAR   {}
 
 #define PWRUP         4   //GPIOA4
-#define PWRUP_SET     {mcp.digitalWrite(PWRUP, HIGH);}
-#define PWRUP_CLEAR   {mcp.digitalWrite(PWRUP, LOW);}
+#define PWRUP_SET     {}
+#define PWRUP_CLEAR   {}
 
 #define VCOM         5   //GPIOA6
-#define VCOM_SET     {mcp.digitalWrite(VCOM, HIGH);}
-#define VCOM_CLEAR   {mcp.digitalWrite(VCOM, LOW);}
+#define VCOM_SET     {}
+#define VCOM_CLEAR   {}
 
 #define GDISP_SCREEN_HEIGHT 600
 #define CKV_CLOCK ckvClock();
@@ -107,6 +105,8 @@ class Inkplate : public Adafruit_GFX {
     //PVI waveform for cleaning screen, not sure if it is correct, but it cleans screen properly.
     const uint32_t waveform[50] = {0x00000008, 0x00000008, 0x00200408, 0x80281888, 0x60a81898, 0x60a8a8a8, 0x60a8a8a8, 0x6068a868, 0x6868a868, 0x6868a868, 0x68686868, 0x6a686868, 0x5a686868, 0x5a686868, 0x5a586a68, 0x5a5a6a68, 0x5a5a6a68, 0x55566a68, 0x55565a64, 0x55555654, 0x55555556, 0x55555556, 0x55555556, 0x55555516, 0x55555596, 0x15555595, 0x95955595, 0x95959595, 0x95949495, 0x94949495, 0x94949495, 0xa4949494, 0x9494a4a4, 0x84a49494, 0x84948484, 0x84848484, 0x84848484, 0x84848484, 0xa5a48484, 0xa9a4a4a8, 0xa9a8a8a8, 0xa5a9a9a4, 0xa5a5a5a4, 0xa1a5a5a1, 0xa9a9a9a9, 0xa9a9a9a9, 0xa9a9a9a9, 0xa9a9a9a9, 0x15151515, 0x11111111};
 
+	//8 bit value to 32 bit gpio lut
+	const uint32_t pinLut[256] = {0x0, 0x8000, 0x20, 0x8020, 0x4, 0x8004, 0x24, 0x8024, 0x40000, 0x48000, 0x40020, 0x48020, 0x40004, 0x48004, 0x40024, 0x48024, 0x1, 0x8001, 0x21, 0x8021, 0x5, 0x8005, 0x25, 0x8025, 0x40001, 0x48001, 0x40021, 0x48021, 0x40005, 0x48005, 0x40025, 0x48025, 0x80000, 0x88000, 0x80020, 0x88020, 0x80004, 0x88004, 0x80024, 0x88024, 0xc0000, 0xc8000, 0xc0020, 0xc8020, 0xc0004, 0xc8004, 0xc0024, 0xc8024, 0x80001, 0x88001, 0x80021, 0x88021, 0x80005, 0x88005, 0x80025, 0x88025, 0xc0001, 0xc8001, 0xc0021, 0xc8021, 0xc0005, 0xc8005, 0xc0025, 0xc8025, 0x10, 0x8010, 0x30, 0x8030, 0x14, 0x8014, 0x34, 0x8034, 0x40010, 0x48010, 0x40030, 0x48030, 0x40014, 0x48014, 0x40034, 0x48034, 0x11, 0x8011, 0x31, 0x8031, 0x15, 0x8015, 0x35, 0x8035, 0x40011, 0x48011, 0x40031, 0x48031, 0x40015, 0x48015, 0x40035, 0x48035, 0x80010, 0x88010, 0x80030, 0x88030, 0x80014, 0x88014, 0x80034, 0x88034, 0xc0010, 0xc8010, 0xc0030, 0xc8030, 0xc0014, 0xc8014, 0xc0034, 0xc8034, 0x80011, 0x88011, 0x80031, 0x88031, 0x80015, 0x88015, 0x80035, 0x88035, 0xc0011, 0xc8011, 0xc0031, 0xc8031, 0xc0015, 0xc8015, 0xc0035, 0xc8035, 0x200000, 0x208000, 0x200020, 0x208020, 0x200004, 0x208004, 0x200024, 0x208024, 0x240000, 0x248000, 0x240020, 0x248020, 0x240004, 0x248004, 0x240024, 0x248024, 0x200001, 0x208001, 0x200021, 0x208021, 0x200005, 0x208005, 0x200025, 0x208025, 0x240001, 0x248001, 0x240021, 0x248021, 0x240005, 0x248005, 0x240025, 0x248025, 0x280000, 0x288000, 0x280020, 0x288020, 0x280004, 0x288004, 0x280024, 0x288024, 0x2c0000, 0x2c8000, 0x2c0020, 0x2c8020, 0x2c0004, 0x2c8004, 0x2c0024, 0x2c8024, 0x280001, 0x288001, 0x280021, 0x288021, 0x280005, 0x288005, 0x280025, 0x288025, 0x2c0001, 0x2c8001, 0x2c0021, 0x2c8021, 0x2c0005, 0x2c8005, 0x2c0025, 0x2c8025, 0x200010, 0x208010, 0x200030, 0x208030, 0x200014, 0x208014, 0x200034, 0x208034, 0x240010, 0x248010, 0x240030, 0x248030, 0x240014, 0x248014, 0x240034, 0x248034, 0x200011, 0x208011, 0x200031, 0x208031, 0x200015, 0x208015, 0x200035, 0x208035, 0x240011, 0x248011, 0x240031, 0x248031, 0x240015, 0x248015, 0x240035, 0x248035, 0x280010, 0x288010, 0x280030, 0x288030, 0x280014, 0x288014, 0x280034, 0x288034, 0x2c0010, 0x2c8010, 0x2c0030, 0x2c8030, 0x2c0014, 0x2c8014, 0x2c0034, 0x2c8034, 0x280011, 0x288011, 0x280031, 0x288031, 0x280015, 0x288015, 0x280035, 0x288035, 0x2c0011, 0x2c8011, 0x2c0031, 0x2c8031, 0x2c0015, 0x2c8015, 0x2c0035, 0x2c8035};
     //Settings for contrast. Basicly, each element in array describes how many times each color is written to display (starting form darkest to lightest).
     //This is for 3 bit mode, but you can expant to 8 bit mode if you want, by adding more wariables, changing display seqence in display4Bit() and expanding the memory buffer size to double the current size.
     const uint8_t contrast_cycles[3] = {1, 4, 3};
@@ -137,10 +137,7 @@ class Inkplate : public Adafruit_GFX {
     void pinsZstate();
     void pinsAsOutputs();
     uint8_t getPanelState();
-	uint8_t readTouchpad(uint8_t);
 	int8_t readTemperature();
-	double readBattery();
-
   private:
 	int8_t _temperature;
     void display1b();

@@ -2,7 +2,7 @@
 
 #include "Adafruit_GFX.h"
 #include "Inkplate.h"
-Adafruit_MCP23017 mcp;
+
 
 Inkplate::Inkplate(uint8_t _mode) : Adafruit_GFX(E_INK_WIDTH, E_INK_HEIGHT) {
   _displayMode = _mode;
@@ -12,40 +12,26 @@ Inkplate::Inkplate() : Adafruit_GFX(E_INK_WIDTH, E_INK_HEIGHT) {
 }
 
 void Inkplate::begin(void) {
-  Wire.begin();
-  mcp.begin(0);
-  mcp.pinMode(VCOM, OUTPUT);
-  mcp.pinMode(PWRUP, OUTPUT);
-  mcp.pinMode(WAKEUP, OUTPUT);
-  mcp.pinMode(GPIO0_ENABLE, OUTPUT);
-  mcp.digitalWrite(GPIO0_ENABLE, HIGH);
+  Wire.begin(22,23);
 
   //CONTROL PINS
-  pinMode(0, OUTPUT);
-  pinMode(2, OUTPUT);
-  pinMode(32, OUTPUT);
-  pinMode(33, OUTPUT);
-  mcp.pinMode(OE, OUTPUT);
-  mcp.pinMode(GMOD, OUTPUT);
-  mcp.pinMode(SPV, OUTPUT);
-
-  //DATA PINS
-  pinMode(4, OUTPUT); //D0
-  pinMode(5, OUTPUT);
-  pinMode(18, OUTPUT);
-  pinMode(19, OUTPUT);
-  pinMode(23, OUTPUT);
+  pinMode(12, OUTPUT);
   pinMode(25, OUTPUT);
   pinMode(26, OUTPUT);
-  pinMode(27, OUTPUT); //D7
-  
-  //TOUCHPAD PINS
-  mcp.pinMode(10, INPUT);
-  mcp.pinMode(11, INPUT);
-  mcp.pinMode(12, INPUT);
-  
-  //Battery voltage Switch MOSFET
-  mcp.pinMode(9, OUTPUT);
+  pinMode(27, OUTPUT);
+  pinMode(13, OUTPUT);
+  pinMode(14, OUTPUT);
+  pinMode(33, OUTPUT);
+
+  //DATA PINS
+  pinMode(15, OUTPUT); //D0
+  pinMode(5, OUTPUT);
+  pinMode(2, OUTPUT);
+  pinMode(18, OUTPUT);
+  pinMode(0, OUTPUT);
+  pinMode(19, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(21, OUTPUT); //D7
   
   //1 bit per pixel mode (monochrome mode)
   if (_displayMode == 0) {
@@ -59,6 +45,7 @@ void Inkplate::begin(void) {
     }
     memset(D_memory_new, 0, 60000);
 	memset(_partial, 0, 60000);
+	memset(_pBuffer, 0, 120000);
   }
 
   //3 bit per pixel mode (8 level grayscale mode)
@@ -160,8 +147,6 @@ void Inkplate::begin_frame() {
 
   //Skip three lines to get to the start of the screen
   advance_line();
-  advance_line();
-  advance_line();
 }
 
 void Inkplate::end_frame() {
@@ -247,23 +232,25 @@ void usleep1() {
 
 //Draw function, used by Adafruit GFX.
 void Inkplate::drawPixel(int16_t x0, int16_t y0, uint16_t color) {
-  if (x0 > 799 || y0 > 599 || x0 < 0 || y0 < 0) return;
-
-  switch (_rotation) {
-    case 1:
-      _swap_int16_t(x0, y0);
-      x0 = _width - x0 - 1;
-      break;
-    case 2:
-      x0 = _width - x0 - 1;
-      y0 = _height - y0 - 1;
-      break;
-    case 3:
-      _swap_int16_t(x0, y0);
-      y0 = _width - y0 - 1;
-      break;
-  }
-
+  if (x0 >= _width || y0 >= _height || x0 < 0 || y0 < 0) return;
+	int16_t t;
+	switch(_rotation){
+	case 1:
+		t = x0;
+		x0 = WIDTH - 1 - y0;
+		y0 = t;
+		break;
+	case 2:
+		x0 = WIDTH - 1 - x0;
+		y0 = HEIGHT - 1 - y0;
+		break;
+	case 3:
+		t = x0;
+		x0 = y0;
+		y0 = HEIGHT - 1 - t;
+		break;
+	}
+   
   if (_displayMode == 0) {
     int x = x0 / 8;
     int x_sub = x0 % 8;
@@ -315,6 +302,7 @@ void Inkplate::display1b() {
 	  cleanFast(0);
 	  delayMicroseconds(500);
   }
+     
   //for(int i = 0; i<2; i++) {
 	  //cleanFast(2);
   //}
@@ -332,7 +320,7 @@ void Inkplate::display1b() {
   //  cleanFast(1);
     //delayMicroseconds(500);
   //}
-	
+
   for (int k = 0; k < 6; k++) {
     begin_frame();
 	_pos = 59999;
@@ -346,13 +334,12 @@ void Inkplate::display1b() {
       begin_line();
       for (int j = 0; j < 100; j++) {
         data = LUTB[(*(D_memory_new + _pos) >> 4)];
-        _send = ((data & B00000011) << 4) | (((data & B00001100) >> 2) << 18) | (((data & B00010000) >> 4) << 23) | (((data & B11100000) >> 5) << 25);
+        //_send = ((data & B00000001) << 15) | (((data & B00000010) >> 1) << 5) | (((data & B00000100) >> 2) << 2) | (((data & B00001000) >> 3) << 18 | (((data & B00010000) >> 4) << 0)  | (((data & B00100000) >> 5) << 19)  | (((data & B01000000) >> 6) << 4) | (((data & B10000000) >> 7) << 21));
           GPIO.out_w1tc = DATA | CL;
-          GPIO.out_w1ts = (_send) | CL;
+          GPIO.out_w1ts = (pinLut[data]) | CL;
         data = LUTB[*(D_memory_new + _pos) & 0x0F];
-        _send = ((data & B00000011) << 4) | (((data & B00001100) >> 2) << 18) | (((data & B00010000) >> 4) << 23) | (((data & B11100000) >> 5) << 25);
-          GPIO.out_w1tc = DATA | CL;
-          GPIO.out_w1ts = (_send) | CL;
+        //_send = ((data & B00000001) << 15) | (((data & B00000010) >> 1) << 5) | (((data & B00000100) >> 2) << 2) | (((data & B00001000) >> 3) << 18 | (((data & B00010000) >> 4) << 0)  | (((data & B00100000) >> 5) << 19)  | (((data & B01000000) >> 6) << 4) | (((data & B10000000) >> 7) << 21));
+          GPIO.out_w1ts = (pinLut[data]) | CL;
 		_pos--;
       }
       end_line();
@@ -408,9 +395,9 @@ void Inkplate::partialUpdate() {
 		////data = LUTW[diffw>>4] & (LUTB[diffb>>4]);
         //data = LUT2[(*(D_memory_new + _pos) >> 4)];
 		data = *(_pBuffer + n);
-        _send = ((data & B00000011) << 4) | (((data & B00001100) >> 2) << 18) | (((data & B00010000) >> 4) << 23) | (((data & B11100000) >> 5) << 25);
+        //_send = ((data & B00000001) << 15) | (((data & B00000010) >> 1) << 5) | (((data & B00000100) >> 2) << 2) | (((data & B00001000) >> 3) << 18 | (((data & B00010000) >> 4) << 0)  | (((data & B00100000) >> 5) << 19)  | (((data & B01000000) >> 6) << 4) | (((data & B10000000) >> 7) << 21));
           GPIO.out_w1tc = DATA | CL;
-          GPIO.out_w1ts = (_send) | CL;
+          GPIO.out_w1ts = (pinLut[data]) | CL;
         //data = LUT2[*(D_memory_new + _pos) & 0x0F];
 		////data = LUTW[diffw&0x0F] & (LUTB[diffb&0x0F]);
         ////_send = ((_pBuffer & B00000011) << 4) | (((_pBuffer & B00001100) >> 2) << 18) | (((_pBuffer & B00010000) >> 4) << 23) | (((_pBuffer & B11100000) >> 5) << 25);
@@ -512,9 +499,9 @@ void Inkplate::display3b() {
 		  pixel |= ( waveform3Bit[pix1&0x07][k] << 6) | ( waveform3Bit[(pix1>>4)&0x07][k] << 4) | ( waveform3Bit[pix2&0x07][k] << 2) | ( waveform3Bit[(pix2>>4)&0x07][k] << 0);
 		  pixel2 |= ( waveform3Bit[pix3&0x07][k] << 6) | ( waveform3Bit[(pix3>>4)&0x07][k] << 4) | ( waveform3Bit[pix4&0x07][k] << 2) | ( waveform3Bit[(pix4>>4)&0x07][k] << 0);
 
-          _send = ((pixel & B00000011) << 4) | (((pixel & B00001100) >> 2) << 18) | (((pixel & B00010000) >> 4) << 23) | (((pixel & B11100000) >> 5) << 25);
+          //_send = ((pixel & B00000001) << 15) | (((pixel & B00000010) >> 1) << 5) | (((pixel & B00000100) >> 2) << 2) | (((pixel & B00001000) >> 3) << 18 | (((pixel & B00010000) >> 4) << 0)  | (((pixel & B00100000) >> 5) << 19)  | (((pixel & B01000000) >> 6) << 4) | (((pixel & B10000000) >> 7) << 21));
           GPIO.out_w1tc = DATA | CL;
-          GPIO.out_w1ts = (_send) | CL;
+          GPIO.out_w1ts = (pinLut[pixel]) | CL;
           //GPIO.out_w1ts = CL;
 
           //4 bit mode (non-reversed bits)
@@ -536,9 +523,9 @@ void Inkplate::display3b() {
           //pixel |= ( pixel_to_epd_cmd[pix1] << 6) | ( pixel_to_epd_cmd[pix2] << 4) | ( pixel_to_epd_cmd[pix3] << 2) | ( pixel_to_epd_cmd[pix4] << 0);
 		  //pixel2 |= ( waveform3Bit[pix1][k] << 6) | ( waveform3Bit[pix2][k] << 4) | ( waveform3Bit[pix3][k] << 2) | ( waveform3Bit[pix4][k] << 0);
 
-          _send = ((pixel2 & B00000011) << 4) | (((pixel2 & B00001100) >> 2) << 18) | (((pixel2 & B00010000) >> 4) << 23) | (((pixel2 & B11100000) >> 5) << 25);
+          //_send = ((pixel2 & B00000001) << 15) | (((pixel2 & B00000010) >> 1) << 5) | (((pixel2 & B00000100) >> 2) << 2) | (((pixel2 & B00001000) >> 3) << 18 | (((pixel2 & B00010000) >> 4) << 0)  | (((pixel2 & B00100000) >> 5) << 19)  | (((pixel2 & B01000000) >> 6) << 4) | (((pixel2 & B10000000) >> 7) << 21));
           GPIO.out_w1tc = DATA | CL;
-          GPIO.out_w1ts = (_send) | CL;
+          GPIO.out_w1ts = (pinLut[pixel2]) | CL;
           //GPIO.out_w1ts = CL;
         }
 		//portENABLE_INTERRUPTS();
@@ -585,7 +572,7 @@ void Inkplate::drawBitmap3Bit(int16_t _x, int16_t _y, const unsigned char* _p, i
 //Clears contenst from display (slower, some epaper panels needs slower cleaning process from others).
 void Inkplate::fillScreen(uint8_t c) {
   uint8_t data = c == 0 ? B10101010 : B01010101;
-  uint32_t _send = ((data & B00000011) << 4) | (((data & B00001100) >> 2) << 18) | (((data & B00010000) >> 4) << 23) | (((data & B11100000) >> 5) << 25);
+  uint32_t _send = ((data & B00000001) << 15) | (((data & B00000010) >> 1) << 5) | (((data & B00000100) >> 2) << 2) | (((data & B00001000) >> 3) << 18 | (((data & B00010000) >> 4) << 0)  | (((data & B00100000) >> 5) << 19)  | (((data & B01000000) >> 6) << 4) | (((data & B10000000) >> 7) << 21));
   draw_mode_on();
   SPV_SET;
   delayMicroseconds(500); //usleep(500);
@@ -654,7 +641,7 @@ void Inkplate::cleanFast(uint8_t c) {
   } else if (c == 2) {
     data = B00000000;     //Discharge
   }
-  uint32_t _send = ((data & B00000011) << 4) | (((data & B00001100) >> 2) << 18) | (((data & B00010000) >> 4) << 23) | (((data & B11100000) >> 5) << 25);
+  uint32_t _send = ((data & B00000001) << 15) | (((data & B00000010) >> 1) << 5) | (((data & B00000100) >> 2) << 2) | (((data & B00001000) >> 3) << 18 | (((data & B00010000) >> 4) << 0)  | (((data & B00100000) >> 5) << 19)  | (((data & B01000000) >> 6) << 4) | (((data & B10000000) >> 7) << 21));
   begin_frame();
   for (int i = 0; i < 600; i++) {
 
@@ -679,32 +666,32 @@ void Inkplate::einkOn() {
   WAKEUP_SET;
   PWRUP_SET;
   //Enable all rails
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x01);
   Wire.write(B00111111);
   Wire.endTransmission();
   //Set out voltage on LDO outputs
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x02);
   Wire.write(B00100011);
   Wire.endTransmission();
   //Set VCOM Voltage
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x03);
-  Wire.write(150);
+  Wire.write(202);
   Wire.endTransmission();
   //Set power up times (all on 3mS)
-  Wire.beginTransmission(0x48);
-  Wire.write(0x0A);
+  Wire.beginTransmission(0x68);
+  Wire.write(0xFF);
   Wire.write(0);
   Wire.endTransmission();
   //Set Power Down Seq.
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x0B);
   Wire.write(B00011011);
   Wire.endTransmission();
   //Set Power Down Times (all on 6mS)
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x0C);
   Wire.write(0);
   Wire.endTransmission();
@@ -713,19 +700,20 @@ void Inkplate::einkOn() {
   
   VCOM_SET;
   
-  Wire.beginTransmission(0x48);
+  /*Wire.beginTransmission(0x68);
   Wire.write(0x0D);
   Wire.write(B10000000);
   Wire.endTransmission();
   
   delay(2);
   
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x00);
   Wire.endTransmission();
   
-  Wire.requestFrom(0x48, 1);
+  Wire.requestFrom(0x68, 1);
   _temperature = Wire.read();
+  */
 
 
 }
@@ -741,11 +729,11 @@ void Inkplate::einkOff() {
 
   PWRUP_CLEAR;
   //Enable all rails
-  Wire.beginTransmission(0x48);
+  Wire.beginTransmission(0x68);
   Wire.write(0x01);
   Wire.write(B00000000);
   Wire.endTransmission();
-  //delay(250);
+  delay(250);
   WAKEUP_CLEAR;
   VCOM_CLEAR;
 
@@ -753,23 +741,23 @@ void Inkplate::einkOff() {
 }
 
 void Inkplate::setRotation(uint8_t r) {
-  _rotation = r % 4;
-  switch (rotation) {
+  _rotation = r & 3;
+  switch (_rotation) {
     case 0:
-      _width  = E_INK_WIDTH;
-      _height = E_INK_HEIGHT;
+      _width  = WIDTH;
+      _height = HEIGHT;
       break;
     case 1:
-      _width  = E_INK_HEIGHT;
-      _height = E_INK_WIDTH;
+      _width  = HEIGHT;
+      _height = WIDTH;
       break;
     case 2:
-      _width  = E_INK_WIDTH;
-      _height = E_INK_HEIGHT;
+      _width  = WIDTH;
+      _height = HEIGHT;
       break;
     case 3:
-      _width  = E_INK_HEIGHT;
-      _height = E_INK_WIDTH;
+      _width  = HEIGHT;
+      _height = WIDTH;
       break;
   }
 }
@@ -780,44 +768,44 @@ uint8_t Inkplate::getPanelState() {
 
 void Inkplate::pinsZstate() {
   //CONTROL PINS
-  pinMode(0, INPUT);
-  pinMode(2, INPUT);
-  pinMode(32, INPUT);
-  pinMode(33, INPUT);
-  mcp.pinMode(OE, INPUT);
-  mcp.pinMode(GMOD, INPUT);
-  mcp.pinMode(SPV, INPUT);
-
-  //DATA PINS
-  pinMode(4, INPUT); //D0
-  pinMode(5, INPUT);
-  pinMode(18, INPUT);
-  pinMode(19, INPUT);
-  pinMode(23, INPUT);
+  pinMode(12, INPUT);
   pinMode(25, INPUT);
   pinMode(26, INPUT);
-  pinMode(27, INPUT); //D7
+  pinMode(27, INPUT);
+  pinMode(13, INPUT);
+  pinMode(14, INPUT);
+  pinMode(33, INPUT);
+
+  //DATA PINS
+  pinMode(15, INPUT); //D0
+  pinMode(5, INPUT);
+  pinMode(2, INPUT);
+  pinMode(18, INPUT);
+  pinMode(0, INPUT);
+  pinMode(19, INPUT);
+  pinMode(4, INPUT);
+  pinMode(21, INPUT); //D7
 }
 
 void Inkplate::pinsAsOutputs() {
   //CONTROL PINS
-  pinMode(0, OUTPUT);
-  pinMode(2, OUTPUT);
-  pinMode(32, OUTPUT);
-  pinMode(33, OUTPUT);
-  mcp.pinMode(OE, OUTPUT);
-  mcp.pinMode(GMOD, OUTPUT);
-  mcp.pinMode(SPV, OUTPUT);
-
-  //DATA PINS
-  pinMode(4, OUTPUT); //D0
-  pinMode(5, OUTPUT);
-  pinMode(18, OUTPUT);
-  pinMode(19, OUTPUT);
-  pinMode(23, OUTPUT);
+  pinMode(12, OUTPUT);
   pinMode(25, OUTPUT);
   pinMode(26, OUTPUT);
-  pinMode(27, OUTPUT); //D7
+  pinMode(27, OUTPUT);
+  pinMode(13, OUTPUT);
+  pinMode(14, OUTPUT);
+  pinMode(33, OUTPUT);
+
+  //DATA PINS
+  pinMode(15, OUTPUT); //D0
+  pinMode(5, OUTPUT);
+  pinMode(2, OUTPUT);
+  pinMode(18, OUTPUT);
+  pinMode(0, OUTPUT);
+  pinMode(19, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(21, OUTPUT); //D7
 }
 
 void Inkplate::selectDisplayMode(uint8_t _mode) {
@@ -860,18 +848,6 @@ uint8_t Inkplate::getDisplayMode() {
   return _displayMode;
 }
 
-uint8_t Inkplate::readTouchpad(uint8_t _pad) {
-  return mcp.digitalRead((_pad&3)+10);
-}
-
 int8_t Inkplate::readTemperature() {
   return _temperature;
-}
-
-double Inkplate::readBattery() {
-  mcp.digitalWrite(9, HIGH);
-  delay(1);
-  int adc = analogRead(35);
-  mcp.digitalWrite(9, LOW);
-  return (double(adc) / 4095 * 3.3 * 2);
 }
