@@ -48,8 +48,8 @@ void Inkplate::begin(void) {
 	memset(_pBuffer, 0, 120000);
   }
 
-  //3 bit per pixel mode (8 level grayscale mode)
-  if (_displayMode == 1) {
+  //3/4 bit per pixel mode (8/16 level grayscale mode)
+  if (_displayMode == INKPLATE_3BIT||_displayMode == INKPLATE_4BIT) {
     D_memory4Bit = (uint8_t*)ps_malloc(240000);
     if (D_memory4Bit == NULL ) {
       do {
@@ -62,10 +62,10 @@ void Inkplate::begin(void) {
 
 void Inkplate::clearDisplay() {
   //Clear 1 bit per pixel display buffer
-  if (_displayMode == 0) memset(_partial, 0, 60000);
+  if (_displayMode == INKPLATE_1BIT) memset(_partial, 0, 60000);
 
-  //Clear 3 bit per pixel display buffer
-  if (_displayMode == 1) memset(D_memory4Bit, 255, 240000);
+  //Clear 3/4 bit per pixel display buffer
+  if (_displayMode == INKPLATE_3BIT||_displayMode == INKPLATE_4BIT) memset(D_memory4Bit, 255, 240000);
 }
 
 void Inkplate::draw_mode_on() {
@@ -251,19 +251,26 @@ void Inkplate::drawPixel(int16_t x0, int16_t y0, uint16_t color) {
 		break;
 	}
    
-  if (_displayMode == 0) {
+  if (_displayMode == INKPLATE_1BIT) {
     int x = x0 / 8;
     int x_sub = x0 % 8;
     uint8_t temp = *(_partial + 100 * y0 + x); //D_memory_new[99 * y0 + x];                     //-->> Doesn't work with index
     //D_memory_new[100 * y0 + x] = ~pixelMaskLUT[x_sub] & temp | (color ? pixelMaskLUT[x_sub] : 0); //-->> Doesn't work with index
     *(_partial + 100 * y0 + x) = ~pixelMaskLUT[x_sub] & temp | (color ? pixelMaskLUT[x_sub] : 0);
-  } else {
+  } else if (_displayMode == INKPLATE_3BIT) {
     color &= 7;
     int x = x0 / 2;
     int x_sub = x0 % 2;
     uint8_t temp;
     temp = *(D_memory4Bit + 400 * y0 + x);
     *(D_memory4Bit + 400 * y0 + x) = pixelMaskGLUT[x_sub] & temp | (x_sub ? color : color << 4);
+  } else if (_displayMode == INKPLATE_4BIT) {
+	color &= 15;
+    int x = x0 / 2;
+    int x_sub = x0 % 2;
+    uint8_t temp;
+    temp = *(D_memory4Bit + 400 * y0 + x);
+    *(D_memory4Bit + 400 * y0 + x) = pixelMaskGLUT[x_sub] & temp | (x_sub ? color : color << 4);  
   }
 }
 
@@ -271,8 +278,9 @@ void Inkplate::drawPixel(int16_t x0, int16_t y0, uint16_t color) {
 
 //Function that displays content from RAM to screen
 void Inkplate::display() {
-  if (_displayMode == 0) display1b();
-  if (_displayMode == 1) display3b();
+  if (_displayMode == INKPLATE_1BIT) display1b();
+  if (_displayMode == INKPLATE_3BIT) display3b();
+  if (_displayMode == INKPLATE_4BIT) display4b();
 }
 
 //Display content from RAM to display (1 bit per pixel,. monochrome picture).
@@ -539,7 +547,97 @@ void Inkplate::display3b() {
   delayMicroseconds(500);
   draw_mode_off();
 }
+//Display content from RAM to display (4 bit per pixel, 16 level of grayscale, STILL IN PROGRESSS, we need correct wavefrom to get good picture, use it only for pictures not for GFX).
+void Inkplate::display4b() {
+  draw_mode_on();
+  SPV_SET;
+  delayMicroseconds(500);
+  cleanFast(2);
+  //cleanFast(2);
+  //for(int i = 0; i<5; i++) {
+  //	cleanFast(0);
+  //}
+  for(int i = 0; i<5; i++) {
+	  cleanFast(0);
+	  //delay(1);
+  } 
+  delay(5);
+  for(int i = 0; i<5; i++) {
+	  cleanFast(0);
+	  //delay(1);
+  } 
+  delay(5);
+  for(int i = 0; i<7; i++) {
+	  cleanFast(1);
+	  //delay(1);
+  }
+  delay(5);
+  for(int i = 0; i<7; i++) {
+	  cleanFast(0);
+	  //delay(1);
+  }
+  delay(5);
+  //cleanFast(1);
+  cleanFast(2);
+  //cleanFast(0);
+  //for(int i = 0; i<3; i++) {
+  //	  cleanFast(2);
+  //}
+  
+  for (int k = 0; k < 12; k++) {
+  //for (int k = 0; k < sz_contrast_cycles; ++k) {
+    //for (int contrast_cnt = 0; contrast_cnt < contrast_cycles[k]; ++contrast_cnt) {
+      begin_frame();
+      uint8_t *dp = D_memory4Bit + 239999;
+      uint32_t _send;
+      uint8_t pix1;
+      uint8_t pix2;
+      uint8_t pix3;
+      uint8_t pix4;
 
+      for (int i = 0; i < 600; i++) {
+		//CL_SET;
+        //GPIO.out_w1tc = DATA;
+        //CL_CLEAR;
+        begin_line();
+		//portDISABLE_INTERRUPTS();
+        for (int j = 0; j < 100; j++) {
+
+          uint8_t pixel = 0B00000000;
+          uint8_t pixel2 = 0B00000000;
+
+		  pix1 = *(dp--);
+          pix2 = *(dp--);
+		  pix3 = *(dp--);
+          pix4 = *(dp--);
+		  
+          pixel |= ( waveform4Bit[pix1&0x0F][k] << 6) | ( waveform4Bit[(pix1>>4)&0x0F][k] << 4) | ( waveform4Bit[pix2&0x0F][k] << 2) | ( waveform4Bit[(pix2>>4)&0x0F][k] << 0);
+		  pixel2 |= ( waveform4Bit[pix3&0x0F][k] << 6) | ( waveform4Bit[(pix3>>4)&0x0F][k] << 4) | ( waveform4Bit[pix4&0x0F][k] << 2) | ( waveform4Bit[(pix4>>4)&0x0F][k] << 0);
+		 
+          //_send = ((pixel & B00000001) << 15) | (((pixel & B00000010) >> 1) << 5) | (((pixel & B00000100) >> 2) << 2) | (((pixel & B00001000) >> 3) << 18 | (((pixel & B00010000) >> 4) << 0)  | (((pixel & B00100000) >> 5) << 19)  | (((pixel & B01000000) >> 6) << 4) | (((pixel & B10000000) >> 7) << 21));
+          GPIO.out_w1tc = DATA | CL;
+          GPIO.out_w1ts = (pinLut[pixel]) | CL;
+          //GPIO.out_w1ts = CL;
+
+          //pixel |= ( pixel_to_epd_cmd[pix1] << 6) | ( pixel_to_epd_cmd[pix2] << 4) | ( pixel_to_epd_cmd[pix3] << 2) | ( pixel_to_epd_cmd[pix4] << 0);
+		  //pixel2 |= ( waveform4Bit[pix1][k] << 6) | ( waveform4Bit[pix2][k] << 4) | ( waveform4Bit[pix3][k] << 2) | ( waveform4Bit[pix4][k] << 0);
+
+          //_send = ((pixel2 & B00000001) << 15) | (((pixel2 & B00000010) >> 1) << 5) | (((pixel2 & B00000100) >> 2) << 2) | (((pixel2 & B00001000) >> 3) << 18 | (((pixel2 & B00010000) >> 4) << 0)  | (((pixel2 & B00100000) >> 5) << 19)  | (((pixel2 & B01000000) >> 6) << 4) | (((pixel2 & B10000000) >> 7) << 21));
+          GPIO.out_w1tc = DATA | CL;
+          GPIO.out_w1ts = (pinLut[pixel2]) | CL;
+          //GPIO.out_w1ts = CL;
+        }
+		//portENABLE_INTERRUPTS();
+        end_line();
+      }
+      end_frame();
+    //}
+  }
+  
+  cleanFast(2);
+  delayMicroseconds(500);
+  draw_mode_off();
+}
 void ckvClock() {
   CKV_CLEAR;
   usleep1();
@@ -569,6 +667,21 @@ void Inkplate::drawBitmap3Bit(int16_t _x, int16_t _y, const unsigned char* _p, i
   }
 }
 
+void Inkplate::drawBitmap4Bit(int16_t _x, int16_t _y, const unsigned char* _p, int16_t _w, int16_t _h) {
+  if (_displayMode != INKPLATE_4BIT) return;
+  uint8_t  _rem = _w % 2;
+  int i, j;
+  int xSize = _w / 2 + _rem;
+  
+  for (i = 0; i < _h; i++) {
+    for (j = 0; j < xSize - 1; j++) {
+      drawPixel((j * 2) + _x, i + _y, (*(_p + xSize * (i) + j) >> 4));
+      drawPixel((j * 2) + 1 + _x, i + _y, (*(_p + xSize * (i) + j) & 0xff));
+    }
+    drawPixel((j * 2) + _x, i + _y, (*(_p + xSize * (i) + j) >> 4));
+    if (_rem == 0) drawPixel((j * 2) + 1 + _x, i + _y, (*(_p + xSize * (i) + j) & 0xff));
+  }
+}
 //Clears contenst from display (slower, some epaper panels needs slower cleaning process from others).
 void Inkplate::fillScreen(uint8_t c) {
   uint8_t data = c == 0 ? B10101010 : B01010101;
@@ -825,14 +938,14 @@ void Inkplate::selectDisplayMode(uint8_t _mode) {
     _displayMode = INKPLATE_1BIT;
   }
 
-  if (_mode == INKPLATE_3BIT) {
+  if (_mode == INKPLATE_3BIT||_mode == INKPLATE_4BIT) {
 	if (D_memory4Bit != NULL) return;
     if (D_memory_new != NULL) {
 		free(D_memory_new);
 		free(_partial);
 		free(_pBuffer);
 	}
-    //3 bit per pixel mode (8 level grayscale mode)
+    //3/4 bit per pixel mode (8/16 level grayscale mode)
     D_memory4Bit = (uint8_t*)ps_malloc(240000);
     if (D_memory4Bit == NULL ) {
       do {
@@ -840,7 +953,7 @@ void Inkplate::selectDisplayMode(uint8_t _mode) {
       } while (true);
     }
     memset(D_memory4Bit, 255, 240000);
-    _displayMode = INKPLATE_3BIT;
+    _displayMode = _mode;
   }
 }
 
